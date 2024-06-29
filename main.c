@@ -5,11 +5,11 @@
 #include <time.h>
 #define epsilon 40
 
+int i, j;
 
-typedef struct point{
+typedef struct pixel {
     int x, y;
-} Point;
-
+} pixel;
 
 char* load_png_file(const char *filename, int *width, int *height) {
     unsigned char *image = NULL;
@@ -19,103 +19,91 @@ char* load_png_file(const char *filename, int *width, int *height) {
         return NULL;
     }
 
-    return (image);
+    return image;
 }
 
-void floodFill(unsigned char* image, int x, int y, int newColor1, int newColor2, int newColor3, int oldColor, int width, int height) {
+void colouring(unsigned char* image, int nC1, int nC2, int nC3, int oldC, int w, int h, int x, int y) {
+    pixel* a = malloc(sizeof(pixel)*w * h * 4);
+    long long upp = 0;
+    int resultInd, nx, ny, nInd;
     int dx[] = {-1, 0, 1, 0};
     int dy[] = {0, 1, 0, -1};
-    Point* ar = malloc(width * height * 4 * sizeof(Point));
-    long top = 0;
-    ar[top++] = (Point){x, y};
-    while(top > 0) {
-        Point p = ar[--top];
-        if(p.x < 0 || p.x >= width || p.y < 0 || p.y >= height)
-            continue;
-        int resultIndex = (p.y * width + p.x) * 4;
-        if(image[resultIndex] > oldColor)
-            continue;
-        image[resultIndex] = newColor1;
-        image[resultIndex + 1] = newColor2;
-        image[resultIndex + 2] = newColor3;
-        for(int i = 0; i < 4; i++) {
-            int nx = p.x + dx[i];
-            int ny = p.y + dy[i];
-            int nIndex = (ny * width + nx) * 4;
-            if(nx > 0 && nx < width && ny > 0 && ny < height && image[nIndex] <= oldColor) {
-                ar[top++] = (Point){nx, ny};
+    a[upp] = (pixel){x, y};
+    upp+=1;
+    while (upp > 0) {
+        upp-=1;
+        pixel tmp = a[upp];
+        if (tmp.x < 0 || tmp.y >= h || tmp.x >= w || tmp.y < 0) continue;
+        resultInd = (tmp.y * w + tmp.x) * 4;
+        if (image[resultInd] > oldC) continue;
+        image[resultInd] = nC1;
+        image[resultInd + 1] = nC2;
+        image[resultInd + 2] = nC3;
+        for (i = 0; i < 4; i++) {
+            nx = tmp.x + dx[i];
+            ny = tmp.y + dy[i];
+            nInd = (ny * w + nx) * 4;
+            if (image[nInd] <= oldC && nx >= 0 && nx < w && ny >= 0 && ny < h) {
+                a[upp] = (pixel){nx, ny};
+                upp+=1;
             }
         }
     }
-    free(ar);
+    free(a);
 }
-
-void ScharrFilter(unsigned char *image, int width, int height) {
-    int x, y, dy, dx, i;
-    int gx[3][3] = {{3, 0, -3},
-                    {10, 0, -10},
-                    {3, 0, -3}};
-    int gy[3][3] = {{3,  10,  3},
-                    {0,  0,  0},
-                    {-3, -10, -3}};
-    unsigned char *result = malloc(width * height * 4 * sizeof(unsigned char));
-
-    for (y = 1; y < height - 1; y++) {
-        for (x = 1; x < width - 1; x++) {
-            int sumX = 0, sumY = 0;
-            for (dy = -1; dy <= 1; dy++) {
-                for (dx = -1; dx <= 1; dx++) {
-                    int index = ((y + dy) * width + (x + dx)) * 4;
-                    int gray = (image[index] + image[index + 1] + image[index + 2]) / 10;
-                    sumX += gx[dy + 1][dx + 1] * gray;
-                    sumY += gy[dy + 1][dx + 1] * gray;
-                }
-            }
-            int mg = sqrt(sumX * sumX + sumY * sumY);
-            if (mg > 255) mg = 255;
-            if (mg < 0) mg = 0;
-
-            int resultIndex = (y * width + x) * 4;
-            result[resultIndex] = (unsigned char) mg;
-            result[resultIndex + 1] = (unsigned char) mg;
-            result[resultIndex + 2] = (unsigned char) mg;
-            result[resultIndex + 3] = image[resultIndex + 3];
-        }
-    }
-
-    for (i = 0; i < width * height * 4; i++) {
-        image[i] = result[i];
-    }
-    free(result);
-}
-
-
-
-void colorComponents(unsigned char *image, int width, int height) {
-    int x, y;
-    for (y = 1; y < height - 1; y++) {
-        for (x = 1; x < width - 1; x++) {
-            if (image[4 * (y * width + x)] < epsilon) {
-                floodFill(image, x, y, rand() % (255 - epsilon * 2) + epsilon * 2, \
-                rand() % (255 - epsilon * 2) + epsilon * 2, \
-                rand() % (255 - epsilon * 2) + epsilon * 2, epsilon, width, height);
-
-            }
-        }
-    }
-    char *output_filename = "skull_filter_applied.png";
-    lodepng_encode32_file(output_filename, image, width, height);
-}
-
 
 int main() {
-    int width = 0, height = 0, x, y, dy, dx;
+    int w = 0, h = 0, x, y, dy, dx, xsum, ysum, ind, grey, resultInd, mg, nC1, nC2, nC3;
     char *filename = "skull.png";
-    char *image = load_png_file(filename, &width, &height);
-
-    ScharrFilter(image, width, height);
-    colorComponents(image, width, height);
-
+    char *image = load_png_file(filename, &w, &h);
+    if (image == NULL) {
+        printf("I can't read the picture %s. Error.\n", filename);
+        return -1;
+    }
+    else{
+        unsigned char *result = malloc(w * h * 4 * sizeof(unsigned char));
+        int gx[3][3] = {{1, 0, -1},{2, 0, -2},{1, 0, -1}};
+        int gy[3][3] = {{1,  2,  1},{0,  0,  0},{-1, -2, -1}};
+        for (y = 1; y < h - 1; y++) {
+            for (x = 1; x < w - 1; x++) {
+                xsum = 0, ysum = 0;
+                for (dy = -1; dy <= 1; dy++) {
+                    for (dx = -1; dx <= 1; dx++) {
+                        ind = (w * (y + dy) + (x + dx)) * 4;
+                        grey = (image[ind] + image[ind + 1] + image[ind + 2]) / 3;
+                        xsum += gx[dy + 1][dx + 1] * grey;
+                        ysum += gy[dy + 1][dx + 1] * grey;
+                    }
+                }
+                mg = sqrt(xsum * xsum + ysum * ysum);
+                mg = mg > 255 ? 255 : mg;
+                mg = mg < 0 ? 0 : mg;
+                resultInd = (y * w + x) * 4;
+                for(i = 0; i < 3; i++) result[resultInd + i] = mg;
+                result[resultInd + 3] = image[resultInd + 3];
+            }
+        }
+        for (i = 0; i < w * h * 4; i++) image[i] = result[i];
+        for (i = 0; i < h; i++) {
+            for (j = 0; j < w; j++) {
+                int ind = (i * w + j) * 4;
+                if (image[ind] < epsilon) {
+                    nC1 = rand() % (255 - epsilon*10) + epsilon * 2;
+                    nC2 = rand() % (255 - epsilon*10) + epsilon * 2;
+                    nC3 = rand() % (255 - epsilon*10) + epsilon * 2;
+                    colouring(image, nC1, nC2, nC3, epsilon, w, h, j, i);
+                }
+            }
+        }
+        char *output_filename = "skull_filter_applied.png";
+        lodepng_encode32_file(output_filename, image, w, h);
+        unsigned error = lodepng_encode32_file(output_filename, image, w, h);
+        if (error) {
+            printf("error %u: %s\n", error, lodepng_error_text(error));
+            return -1;
+        }
+        free(result);
+    }
     free(image);
     return 0;
 }
